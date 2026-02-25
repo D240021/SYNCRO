@@ -1,14 +1,22 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, xdr::ToXdr, Address, Bytes, Env, IntoVal,
-};
 
-/// Storage keys for contract-level state (admin, pause flag).
-#[contracttype]
+use soroban_sdk::{
+    contract,
+    contractevent,
+    contractimpl,
+    contracttype,
+    token,
+    xdr::ToXdr,
+    Address,
+    Bytes,
+    Env,
+    IntoVal,
+};#[contracttype]
 #[derive(Clone)]
 enum ContractKey {
     Admin,
     Paused,
+    FeeConfig,
     LoggingContract,
 }
 
@@ -158,33 +166,20 @@ impl SubscriptionRenewalContract {
         if env.storage().instance().has(&ContractKey::Admin) {
             panic!("Already initialized");
         }
-        env.storage().instance().set(&ContractKey::Admin, &admin);
-        env.storage().instance().set(&ContractKey::Paused, &false);
+
+        let config = FeeConfig { percentage, recipient: recipient.clone() };
+        env.storage().instance().set(&ContractKey::FeeConfig, &config);
+
+        FeeConfigUpdated {
+            percentage,
+            recipient,
+        }
+        .publish(&env);
     }
 
-    /// Internal helper – loads admin and calls `require_auth`.
-    fn require_admin(env: &Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&ContractKey::Admin)
-            .expect("Contract not initialized");
-        admin.require_auth();
-    }
-
-    /// Pause or unpause all renewal execution. Admin only.
-    pub fn set_paused(env: Env, paused: bool) {
-        Self::require_admin(&env);
-        env.storage().instance().set(&ContractKey::Paused, &paused);
-        PauseToggled { paused }.publish(&env);
-    }
-
-    /// Query the current pause state.
-    pub fn is_paused(env: Env) -> bool {
-        env.storage()
-            .instance()
-            .get(&ContractKey::Paused)
-            .unwrap_or(false)
+    /// Retrieve the current fee configuration
+    pub fn get_fee_config(env: Env) -> Option<FeeConfig> {
+        env.storage().instance().get(&ContractKey::FeeConfig)
     }
 
     /// Set the logging contract address. Admin only.
