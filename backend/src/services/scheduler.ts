@@ -94,6 +94,37 @@ export class SchedulerService {
     logger.info(`Started ${this.jobs.length} scheduled jobs`);
   }
 
+  private async processRenewals(): Promise<void> {
+    const { data: pendingRenewals, error } = await supabase
+      .from('subscriptions')
+      .select('id, user_id, price')
+      .eq('status', 'active')
+      .lte('next_billing_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString());
+
+    if (error || !pendingRenewals) {
+      logger.error('Failed to fetch pending renewals:', error);
+      return;
+    }
+
+    for (const sub of pendingRenewals) {
+      const { data: approval } = await supabase
+        .from('renewal_approvals')
+        .select('approval_id')
+        .eq('subscription_id', sub.id)
+        .eq('used', false)
+        .single();
+
+      if (approval) {
+        await renewalExecutor.executeRenewalWithRetry({
+          subscriptionId: sub.id,
+          userId: sub.user_id,
+          approvalId: approval.approval_id,
+          amount: sub.price,
+        });
+      }
+    }
+  }
+
   /**
    * Stop all scheduled jobs
    */
