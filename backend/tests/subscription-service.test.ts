@@ -37,21 +37,26 @@ jest.mock('../src/utils/transaction', () => ({
 // Mock renewalCooldownService to avoid supabase chain complexity in retryBlockchainSync tests
 jest.mock('../src/services/renewal-cooldown-service', () => ({
   renewalCooldownService: {
-    checkCooldown: jest.fn().mockResolvedValue({
-      canRetry: true,
-      isOnCooldown: false,
-      timeRemainingSeconds: 0,
-    }),
-    recordRenewalAttempt: jest.fn().mockResolvedValue({
-      previous_attempt_at: null,
-      new_attempt_at: new Date().toISOString(),
-    }),
+    checkCooldown: jest.fn(),
+    recordRenewalAttempt: jest.fn(),
   },
 }));
+
+import { renewalCooldownService } from '../src/services/renewal-cooldown-service';
 
 describe('SubscriptionService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Re-apply defaults after resetMocks clears them
+    (renewalCooldownService.checkCooldown as jest.Mock).mockResolvedValue({
+      canRetry: true,
+      isOnCooldown: false,
+      timeRemainingSeconds: 0,
+    });
+    (renewalCooldownService.recordRenewalAttempt as jest.Mock).mockResolvedValue({
+      previous_attempt_at: null,
+      new_attempt_at: new Date().toISOString(),
+    });
   });
 
   describe('getSubscription()', () => {
