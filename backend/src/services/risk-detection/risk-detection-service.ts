@@ -1,6 +1,3 @@
-The following is the integrated code for the `RiskDetectionService`, resolving the merge conflicts by including the `webhookService` and ensuring consistent string quoting:
-
-```typescript
 /**
  * Risk Detection Service
  * Core service for computing and managing subscription risk scores
@@ -8,7 +5,6 @@ The following is the integrated code for the `RiskDetectionService`, resolving t
 
 import { supabase } from "../../config/database";
 import logger from "../../config/logger";
-import { Subscription } from "../../types/subscription";
 import { webhookService } from "../webhook-service";
 import {
   RiskAssessment,
@@ -17,7 +13,6 @@ import {
   RiskWeightConfig,
   DEFAULT_RISK_WEIGHTS,
   RiskRecalculationResult,
-  RenewalAttempt,
   RiskFactor,
   RiskLevel,
 } from "../../types/risk-detection";
@@ -50,7 +45,6 @@ export class RiskDetectionService {
     const startTime = Date.now();
 
     try {
-      // Fetch subscription
       const { data: subscription, error } = await supabase
         .from("subscriptions")
         .select("*")
@@ -70,28 +64,21 @@ export class RiskDetectionService {
           risk_level: "none" as RiskLevel,
           risk_factors: [],
           computed_at: new Date().toISOString(),
-          skipped: true,
         };
       }
 
-      // Build risk context
       const context: RiskContext = {
         currentTimestamp: new Date(),
-        // Note: projectedBalance would be calculated by a separate service
-        // For now, we'll skip balance projection if not provided
       };
 
-      // Run all evaluators
       const riskWeights = await Promise.all([
         this.consecutiveFailuresEvaluator.evaluate(subscription, context),
         this.balanceProjectionEvaluator.evaluate(subscription, context),
         this.approvalExpirationEvaluator.evaluate(subscription, context),
       ]);
 
-      // Aggregate risk level
       const riskLevel = this.aggregator.aggregate(riskWeights);
 
-      // Convert risk weights to risk factors for storage
       const riskFactors: RiskFactor[] = riskWeights.map((w) => ({
         factor_type: w.type,
         weight: w.weight,
@@ -112,7 +99,6 @@ export class RiskDetectionService {
         duration_ms: duration,
       });
 
-      // Log calculation details
       logger.debug("Risk calculation details", {
         subscription_id: subscriptionId,
         risk_factors: riskFactors,
@@ -134,7 +120,6 @@ export class RiskDetectionService {
     userId: string,
   ): Promise<RiskScore> {
     try {
-      // Get old score to check for change
       const { data: oldScore } = await supabase
         .from("subscription_risk_scores")
         .select("risk_level")
@@ -164,14 +149,19 @@ export class RiskDetectionService {
       }
 
       if (data && oldScore && oldScore.risk_level !== assessment.risk_level) {
-        webhookService.dispatchEvent(userId, "subscription.risk_score_changed", {
-          subscription_id: assessment.subscription_id,
-          old_risk_level: oldScore.risk_level,
-          new_risk_level: assessment.risk_level,
-          risk_factors: assessment.risk_factors
-        }).catch(err => {
-          logger.error("Failed to dispatch subscription.risk_score_changed webhook:", err);
-        });
+        webhookService
+          .dispatchEvent(userId, "subscription.risk_score_changed", {
+            subscription_id: assessment.subscription_id,
+            old_risk_level: oldScore.risk_level,
+            new_risk_level: assessment.risk_level,
+            risk_factors: assessment.risk_factors,
+          })
+          .catch((err) => {
+            logger.error(
+              "Failed to dispatch subscription.risk_score_changed webhook:",
+              err,
+            );
+          });
       }
 
       return data as RiskScore;
@@ -247,7 +237,6 @@ export class RiskDetectionService {
     try {
       logger.info("Starting risk recalculation for all active subscriptions");
 
-      // Fetch all active subscriptions in batches
       const batchSize = 100;
       let offset = 0;
       let hasMore = true;
@@ -271,7 +260,6 @@ export class RiskDetectionService {
 
         result.total += subscriptions.length;
 
-        // Process each subscription
         for (const subscription of subscriptions) {
           try {
             const assessment = await this.computeRiskLevel(subscription.id);
@@ -345,4 +333,3 @@ export class RiskDetectionService {
 }
 
 export const riskDetectionService = new RiskDetectionService();
-```
